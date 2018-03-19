@@ -8,13 +8,14 @@ from torch.autograd import Variable
 class MemNet(nn.Module):
     def __init__(self, in_channels, channels, num_memblock, num_resblock):
         super(MemNet, self).__init__()
-        self.feature_extractor = BNReLUConv(in_channels, channels, True)
-        self.reconstructor = BNReLUConv(channels, in_channels, True)
+        self.feature_extractor = BNReLUConv(in_channels, channels)
+        self.reconstructor = BNReLUConv(channels, in_channels)
         self.dense_memory = nn.ModuleList(
             [MemoryBlock(channels, num_resblock, i+1) for i in range(num_memblock)]
         )
 
     def forward(self, x):
+        # x = x.contiguous()
         residual = x
         out = self.feature_extractor(x)
         ys = [out]
@@ -33,7 +34,7 @@ class MemoryBlock(nn.Module):
         self.recursive_unit = nn.ModuleList(
             [ResidualBlock(channels) for i in range(num_resblock)]
         )
-        self.gate_unit = BNReLUConv((num_resblock+num_memblock) * channels, channels, True)
+        self.gate_unit = BNReLUConv((num_resblock+num_memblock) * channels, channels, 1, 1, 0)
 
     def forward(self, x, ys):
         """ys is a list which contains long-term memory coming from previous memory block
@@ -56,10 +57,10 @@ class ResidualBlock(torch.nn.Module):
     x - Relu - Conv - Relu - Conv - x
     """
 
-    def __init__(self, channels):
+    def __init__(self, channels, k=3, s=1, p=1):
         super(ResidualBlock, self).__init__()
-        self.relu_conv1 = BNReLUConv(channels, channels, True)
-        self.relu_conv2 = BNReLUConv(channels, channels, True)
+        self.relu_conv1 = BNReLUConv(channels, channels, k, s, p)
+        self.relu_conv2 = BNReLUConv(channels, channels, k, s, p)
         
     def forward(self, x):
         residual = x
@@ -70,8 +71,8 @@ class ResidualBlock(torch.nn.Module):
 
 
 class BNReLUConv(nn.Sequential):
-    def __init__(self, in_channels, channels, inplace=True):
+    def __init__(self, in_channels, channels, k=3, s=1, p=1, inplace=True):
         super(BNReLUConv, self).__init__()
         self.add_module('bn', nn.BatchNorm2d(in_channels))
         self.add_module('relu', nn.ReLU(inplace=inplace))
-        self.add_module('conv', nn.Conv2d(in_channels, channels, 3, 1, 1))
+        self.add_module('conv', nn.Conv2d(in_channels, channels, k, s, p, bias=False))
